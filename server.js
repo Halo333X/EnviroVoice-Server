@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const { WebSocketServer } = require("ws");
 const path = require("path");
+const axios = require("axios");
 
 const app = express();
 const server = http.createServer(app);
@@ -256,6 +257,32 @@ app.get("/health", (req, res) => {
   res.json(status);
 });
 
+app.get("/gamertag/:tag", async (req, res) => {
+  const tag = req.params.tag;
+  const encoded = encodeURIComponent(tag);
+  const url = `https://xboxgamertag.com/search/${encoded}`;
+
+  console.log("🔍 Verificando gamertag:", tag);
+
+  try {
+    const { data: html } = await axios.get(url);
+
+    const existe = html.includes("Gamerscore");
+
+    res.json({
+      gamertag: tag,
+      exists: existe
+    });
+
+  } catch (err) {
+    console.error("❌ Error verificando gamertag:", err.message);
+    res.status(500).json({
+      error: "Verification failed",
+      message: err.message
+    });
+  }
+});
+
 app.get("/ptt-states", (req, res) => {
   const states = Array.from(pttStates.entries()).map(([gamertag, state]) => ({
     gamertag,
@@ -288,4 +315,5 @@ server.listen(PORT, () => {
   console.log(`💚 Health check: GET http://localhost:${PORT}/health`);
   console.log(`🎙️ PTT states: GET http://localhost:${PORT}/ptt-states`);
 });
+
 
