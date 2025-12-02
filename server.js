@@ -164,22 +164,6 @@ wss.on("connection", (ws) => {
         return;
       }
 
-      if (data.type === 'voice-status') {
-  const gamertag = data.gamertag;
-  const isTalking = data.isTalking;
-
-  console.log(`🎤 Voice: ${gamertag} → ${isTalking ? 'TALKING' : 'SILENT'}`);
-
-  // Broadcast a todos (incluyendo Minecraft)
-  broadcastToAll({
-    type: 'voice-update',
-    gamertag: gamertag,
-    isTalking: isTalking
-  });
-
-  return;
-}
-
       if (data.type === 'offer' || data.type === 'answer' || data.type === 'ice-candidate') {
         if (!data.to || !data.from) {
           console.warn(`⚠️ Mensaje sin 'to' o 'from':`, data.type);
@@ -283,6 +267,32 @@ app.get("/health", (req, res) => {
     uptime: process.uptime()
   };
   res.json(status);
+});
+
+app.get("/gamertag/:tag", async (req, res) => {
+  const tag = req.params.tag;
+  const encoded = encodeURIComponent(tag);
+  const url = `https://xboxgamertag.com/search/${encoded}`;
+
+  console.log("🔍 Verificando gamertag:", tag);
+
+  try {
+    const { data: html } = await axios.get(url);
+
+    const existe = html.includes("Gamerscore");
+
+    res.json({
+      gamertag: tag,
+      exists: existe
+    });
+
+  } catch (err) {
+    console.error("❌ Error verificando gamertag:", err.message);
+    res.status(500).json({
+      error: "Verification failed",
+      message: err.message
+    });
+  }
 });
 
 app.get("/ptt-states", (req, res) => {
