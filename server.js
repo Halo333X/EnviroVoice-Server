@@ -26,6 +26,7 @@ app.use(express.static(path.join(__dirname, "..")));
 let minecraftData = null;
 const clients = new Map();
 const pttStates = new Map();
+const voiceDetectionStates = new Map(); // NUEVO: Estado de detección de voz
 
 app.post("/minecraft-data", (req, res) => {
   minecraftData = req.body;
@@ -43,20 +44,29 @@ app.post("/minecraft-data", (req, res) => {
     ...state
   }));
 
+  // NUEVO: Incluir estados de detección de voz
+  const voiceStatesArray = Array.from(voiceDetectionStates.entries()).map(([gamertag, state]) => ({
+    gamertag,
+    isTalking: state.isTalking,
+    volume: state.volume
+  }));
+
   wss.clients.forEach(client => {
     if (client.readyState === 1) {
       client.send(JSON.stringify({
         type: 'minecraft-update',
         data: minecraftData,
         muteStates: muteStates,
-        pttStates: pttStatesArray
+        pttStates: pttStatesArray,
+        voiceStates: voiceStatesArray // NUEVO
       }));
     }
   });
 
   res.json({ 
     success: true,
-    pttStates: pttStatesArray
+    pttStates: pttStatesArray,
+    voiceStates: voiceStatesArray // NUEVO
   });
 });
 
@@ -106,6 +116,7 @@ wss.on("connection", (ws) => {
         clients.set(ws, { gamertag: data.gamertag });
         
         pttStates.set(data.gamertag, { isTalking: true, isMuted: false });
+        voiceDetectionStates.set(data.gamertag, { isTalking: false, volume: 0 }); // NUEVO
         
         console.log(`👤 ${data.gamertag} se unió (${clients.size} usuarios en total)`);
 
@@ -140,8 +151,23 @@ wss.on("connection", (ws) => {
           });
 
           pttStates.delete(clientData.gamertag);
+          voiceDetectionStates.delete(clientData.gamertag); // NUEVO
           clients.delete(ws);
         }
+        return;
+      }
+
+      // NUEVO: Manejo de detección de voz por decibeles
+      if (data.type === 'voice-detection') {
+        const gamertag = data.gamertag;
+        const isTalking = data.isTalking;
+        const volume = data.volume || 0;
+
+        voiceDetectionStates.set(gamertag, { isTalking, volume });
+
+        console.log(`🎤 Voice Detection: ${gamertag} → ${isTalking ? `TALKING (${volume}dB)` : 'SILENT'}`);
+
+        // No necesitamos broadcast aquí porque Minecraft lo recibirá en el próximo POST
         return;
       }
 
@@ -234,6 +260,7 @@ wss.on("connection", (ws) => {
       });
 
       pttStates.delete(clientData.gamertag);
+      voiceDetectionStates.delete(clientData.gamertag); // NUEVO
       clients.delete(ws);
       
       const updatedList = Array.from(clients.values()).map(c => c.gamertag);
@@ -264,6 +291,7 @@ app.get("/health", (req, res) => {
     connected_users: clients.size,
     minecraft_data: !!minecraftData,
     ptt_active_users: pttStates.size,
+    voice_detection_users: voiceDetectionStates.size, // NUEVO
     uptime: process.uptime()
   };
   res.json(status);
@@ -303,6 +331,15 @@ app.get("/ptt-states", (req, res) => {
   res.json({ pttStates: states });
 });
 
+// NUEVO: Endpoint para obtener estados de detección de voz
+app.get("/voice-states", (req, res) => {
+  const states = Array.from(voiceDetectionStates.entries()).map(([gamertag, state]) => ({
+    gamertag,
+    ...state
+  }));
+  res.json({ voiceStates: states });
+});
+
 process.on('SIGINT', () => {
   console.log('\n🛑 Apagando servidor...');
   
@@ -320,10 +357,11 @@ process.on('SIGINT', () => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 EnviroVoice Server v2.1`);
+  console.log(`🚀 EnviroVoice Server v2.2`);
   console.log(`🌐 Servidor escuchando en puerto ${PORT}`);
   console.log(`📡 WebSocket: ws://localhost:${PORT}`);
   console.log(`🎮 Minecraft endpoint: POST http://localhost:${PORT}/minecraft-data`);
   console.log(`💚 Health check: GET http://localhost:${PORT}/health`);
   console.log(`🎙️ PTT states: GET http://localhost:${PORT}/ptt-states`);
+  console.log(`🎤 Voice states: GET http://localhost:${PORT}/voice-states`);
 });
